@@ -52,12 +52,17 @@ PREDICTION=1
 Build docker image
 ```
 docker build -t tc:lts .
+
 ```
 
 Lauch docker image
 
 ```
+to share the project folder only
 docker run -it -v $(pwd)/finance_artifact:/app/finance_artifact  --env-file=$(pwd)/.env fc:lts
+or
+to share all the project 
+docker run -it -v ${PWD}:/app --env-file=.env fc:lts
 ```
 
 Steps to run project in local system

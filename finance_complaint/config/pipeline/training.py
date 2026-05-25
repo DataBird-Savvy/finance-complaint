@@ -106,15 +106,15 @@ class FinanceConfig:
             accepted_data_dir = os.path.join(data_validation_dir, DATA_VALIDATION_ACCEPTED_DATA_DIR)
             rejected_data_dir = os.path.join(data_validation_dir, DATA_VALIDATION_REJECTED_DATA_DIR)
 
-            data_preprocessing_config = DataValidationConfig(
+            data_validation_config = DataValidationConfig(
                 accepted_data_dir=accepted_data_dir,
                 rejected_data_dir=rejected_data_dir,
                 file_name=DATA_VALIDATION_FILE_NAME
             )
 
-            logger.info(f"Data preprocessing config: {data_preprocessing_config}")
+            logger.info(f"Data validation config: {data_validation_config}")
 
-            return data_preprocessing_config
+            return data_validation_config
         except Exception as e:
             raise FinanceException(e, sys)
 

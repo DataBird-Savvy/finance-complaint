@@ -126,6 +126,7 @@ class DataValidation(FinanceDataSchema):
                  Expected columns: {self.schema.required_columns}\n\
                  Found columns: {columns}\
                  ")
+            logger.info(f"All required columns are present. Required columns: {self.schema.required_columns}")
 
         except Exception as e:
             raise FinanceException(e, sys)

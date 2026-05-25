@@ -18,6 +18,8 @@ from finance_complaint.entity.metadata_entity import DataIngestionMetadata
 from finance_complaint.exception import FinanceException
 from finance_complaint.logger import logger
 from datetime import datetime
+from requests.exceptions import RequestException, ChunkedEncodingError
+
 
 DownloadUrl = namedtuple("DownloadUrl", ["url", "file_path", "n_retry"])
 
@@ -44,8 +46,8 @@ class DataIngestion:
         end_date = datetime.strptime(self.data_ingestion_config.to_date, "%Y-%m-%d")
         n_diff_days = (end_date - start_date).days
         freq = None
-        if n_diff_days > 365:
-            freq = "Y"
+        if n_diff_days > 180:
+            freq = "6M"
         elif n_diff_days > 30:
             freq = "M"
         elif n_diff_days > 7:
@@ -116,73 +118,151 @@ class DataIngestion:
         except Exception as e:
             raise FinanceException(e, sys)
 
-    def retry_download_data(self, data, download_url: DownloadUrl):
-        """
-        This function help to avoid failure as it help to download failed file again
+    # def retry_download_data(self, data, download_url: DownloadUrl):
+    #     """
+    #     This function help to avoid failure as it help to download failed file again
         
-        data:failed response
-        download_url: DownloadUrl
-        """
-        try:
-            # if retry still possible try else return the response
-            if download_url.n_retry == 0:
-                self.failed_download_urls.append(download_url)
-                logger.info(f"Unable to download file {download_url.url}")
-                return
+    #     data:failed response
+    #     download_url: DownloadUrl
+    #     """
+    #     try:
+    #         # if retry still possible try else return the response
+    #         if download_url.n_retry == 0:
+    #             self.failed_download_urls.append(download_url)
+    #             logger.info(f"Unable to download file {download_url.url}")
+    #             return
 
-            # to handle throatling requestion and can be slove if we wait for some second.
-            content = data.content.decode("utf-8")
-            wait_second = re.findall(r'\d+', content)
+    #         # to handle throatling requestion and can be slove if we wait for some second.
+    #         content = data.content.decode("utf-8")
+    #         wait_second = re.findall(r'\d+', content)
 
-            if len(wait_second) > 0:
-                time.sleep(int(wait_second[0]) + 2)
+    #         if len(wait_second) > 0:
+    #             time.sleep(int(wait_second[0]) + 2)
 
-            # Writing response to understand why request was failed
-            failed_file_path = os.path.join(self.data_ingestion_config.failed_dir,
-                                            os.path.basename(download_url.file_path))
-            os.makedirs(self.data_ingestion_config.failed_dir, exist_ok=True)
-            with open(failed_file_path, "wb") as file_obj:
-                file_obj.write(data.content)
+    #         # Writing response to understand why request was failed
+    #         failed_file_path = os.path.join(self.data_ingestion_config.failed_dir,
+    #                                         os.path.basename(download_url.file_path))
+    #         os.makedirs(self.data_ingestion_config.failed_dir, exist_ok=True)
+    #         with open(failed_file_path, "wb") as file_obj:
+    #             file_obj.write(data.content)
 
-            # calling download function again to retry
-            download_url = DownloadUrl(download_url.url, file_path=download_url.file_path,
-                                       n_retry=download_url.n_retry - 1)
-            self.download_data(download_url=download_url)
-        except Exception as e:
-            raise FinanceException(e, sys)
+    #         # calling download function again to retry
+    #         download_url = DownloadUrl(download_url.url, file_path=download_url.file_path,
+    #                                    n_retry=download_url.n_retry - 1)
+    #         self.download_data(download_url=download_url)
+    #     except Exception as e:
+    #         raise FinanceException(e, sys)
+
+    # def download_data(self, download_url: DownloadUrl):
+    #     try:
+    #         logger.info(f"Starting download operation: {download_url}")
+    #         download_dir = os.path.dirname(download_url.file_path)
+
+    #         # creating download directory
+    #         os.makedirs(download_dir, exist_ok=True)
+
+    #         # downloading data
+    #         data = requests.get(download_url.url, params={'User-agent': f'your bot {uuid.uuid4()}'},  timeout=10,
+    #         stream=True)
+            
+
+    #         try:
+    #             logger.info(f"Started writing downloaded data into json file: {download_url.file_path}")
+    #             # saving downloaded data into hard disk
+    #             with open(download_url.file_path, "w") as file_obj:
+    #                 finance_complaint_data = list(map(lambda x: x["_source"],
+    #                                                   filter(lambda x: "_source" in x.keys(),
+    #                                                          json.loads(data.content)))
+    #                                               )
+
+    #                 json.dump(finance_complaint_data, file_obj)
+    #             logger.info(f"Downloaded data has been written into file: {download_url.file_path}")
+    #         except Exception as e:
+    #             logger.info("Failed to download hence retry again.")
+    #             # removing file failed file exist
+    #             if os.path.exists(download_url.file_path):
+    #                 os.remove(download_url.file_path)
+    #             self.retry_download_data(data, download_url=download_url)
+
+    #     except Exception as e:
+    #         logger.info(e)
+    #         raise FinanceException(e, sys)
+
+
+
 
     def download_data(self, download_url: DownloadUrl):
-        try:
-            logger.info(f"Starting download operation: {download_url}")
-            download_dir = os.path.dirname(download_url.file_path)
+   
 
-            # creating download directory
-            os.makedirs(download_dir, exist_ok=True)
-
-            # downloading data
-            data = requests.get(download_url.url, params={'User-agent': f'your bot {uuid.uuid4()}'})
+        for attempt in range(download_url.n_retry):
 
             try:
-                logger.info(f"Started writing downloaded data into json file: {download_url.file_path}")
-                # saving downloaded data into hard disk
-                with open(download_url.file_path, "w") as file_obj:
-                    finance_complaint_data = list(map(lambda x: x["_source"],
-                                                      filter(lambda x: "_source" in x.keys(),
-                                                             json.loads(data.content)))
-                                                  )
+                logger.info(f"[Attempt {attempt+1}] Downloading: {download_url.url}")
 
-                    json.dump(finance_complaint_data, file_obj)
-                logger.info(f"Downloaded data has been written into file: {download_url.file_path}")
-            except Exception as e:
-                logger.info("Failed to download hence retry again.")
-                # removing file failed file exist
+                #  Make request with streaming
+                response = requests.get(download_url.url,headers={'User-Agent': f'bot-{uuid.uuid4()}'},timeout=30,stream=True)
+
+                #  Raise error for bad status (4xx, 5xx)
+                response.raise_for_status()
+
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(download_url.file_path), exist_ok=True)
+
+                #  Write file safely in chunks
+                with open(download_url.file_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+
+                #  Validate JSON (to catch incomplete downloads)
+                with open(download_url.file_path, "r") as f:
+                    data = json.load(f)
+
+                #  Clean data
+                cleaned_data = [record["_source"] for record in data if isinstance(record, dict) and "_source" in record]
+
+                #  Overwrite with cleaned data
+                with open(download_url.file_path, "w") as f:
+                    json.dump(cleaned_data, f)
+
+                logger.info(f"Successfully downloaded: {download_url.file_path}")
+                return  
+            except (RequestException,ChunkedEncodingError,json.JSONDecodeError) as e:
+                logger.warning(f"Download failed "f"(attempt {attempt + 1}/{download_url.n_retry}): {e}")
+
+                # Save corrupted file for debugging
                 if os.path.exists(download_url.file_path):
-                    os.remove(download_url.file_path)
-                self.retry_download_data(data, download_url=download_url)
 
-        except Exception as e:
-            logger.info(e)
-            raise FinanceException(e, sys)
+                    os.makedirs(self.data_ingestion_config.failed_dir, exist_ok=True)
+
+                    failed_file_path = os.path.join(self.data_ingestion_config.failed_dir,
+                        os.path.basename(download_url.file_path)
+                    )
+
+                    try:
+                        with open(download_url.file_path, "rb") as src:
+                            with open(failed_file_path, "wb") as dst:
+                                dst.write(src.read())
+
+                        logger.info(f"Failed file saved at: {failed_file_path}")
+
+                    except Exception as save_error:
+                        logger.warning(f"Unable to save failed file: {save_error}")
+
+                    # Remove corrupted original file
+                    os.remove(download_url.file_path)
+
+                # Exponential backoff
+                wait_time = 2 ** attempt
+
+                logger.info(f"Retrying in {wait_time} seconds...")
+
+                time.sleep(wait_time)
+
+        # All retries exhausted
+        logger.error(f"All retries failed for: {download_url.url}")
+
+        self.failed_download_urls.append(download_url)
 
     def write_metadata(self, file_path: str) -> None:
         """
