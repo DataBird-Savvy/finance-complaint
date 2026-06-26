@@ -7,7 +7,7 @@ from pyspark.sql import DataFrame
 from finance_complaint.exception import FinanceException
 from finance_complaint.logger import logger
 import os, sys
-from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+from pyspark.ml.evaluation import BinaryClassificationEvaluator, MulticlassClassificationEvaluator
 
 
 def write_yaml_file(file_path: str, data: dict = None):
@@ -39,8 +39,8 @@ def read_yaml_file(file_path: str) -> dict:
 
 def get_score(dataframe: DataFrame, metric_name, label_col, prediction_col) -> float:
     try:
-        evaluator = MulticlassClassificationEvaluator(
-            labelCol=label_col, predictionCol=prediction_col,
+        evaluator = BinaryClassificationEvaluator(
+            labelCol=label_col, rawPredictionCol=prediction_col,
             metricName=metric_name)
         score = evaluator.evaluate(dataframe)
         print(f"{metric_name} score: {score}")

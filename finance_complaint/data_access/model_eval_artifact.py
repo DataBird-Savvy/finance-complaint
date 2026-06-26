@@ -11,6 +11,7 @@ class ModelEvaluationArtifactData:
 
     def save_eval_artifact(self, model_eval_artifact: ModelEvaluationArtifact):
         self.collection.insert_one(model_eval_artifact.to_dict())
+        
 
     def get_eval_artifact(self, query):
         self.collection.find_one(query)

@@ -62,7 +62,7 @@ class DataTransformation():
             stages.append(frequency_imputer)
             for im_one_hot_feature, string_indexer_col in zip(self.schema.im_one_hot_encoding_features,
                                                               self.schema.string_indexer_one_hot_features):
-                string_indexer = StringIndexer(inputCol=im_one_hot_feature, outputCol=string_indexer_col)
+                string_indexer = StringIndexer(inputCol=im_one_hot_feature, outputCol=string_indexer_col,handleInvalid="keep")
                 stages.append(string_indexer)
 
             one_hot_encoder = OneHotEncoder(inputCols=self.schema.string_indexer_one_hot_features,

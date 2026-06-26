@@ -15,4 +15,7 @@ LICENSE
 README.md 
 notebook
 airflow/airflow.cfg
-finance_artifact/
+
+airflow/logs/*
+
+model-registry/*

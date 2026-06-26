@@ -144,3 +144,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# artifacts
+finance_artifact/data_transformation/*
+finance_artifact/data_validation/*
+finance_artifact/model_trainer/*
+model-registry/*

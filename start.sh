@@ -1,7 +1,15 @@
 #!/bin/sh
 
-echo "Starting application..."
+airflow db init
 
-python3 main.py --t 1 --p 0
+airflow users create \
+  --username jiya \
+  --password password \
+  --firstname jiya \
+  --lastname joseph \
+  --role Admin \
+  --email josephjiyamary@gmail.com || true
 
-echo "Execution finished."
+nohup airflow scheduler &
+
+airflow webserver

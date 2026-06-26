@@ -14,9 +14,7 @@ PartialModelTrainerRefArtifact = namedtuple("PartialModelTrainerRefArtifact", ["
                                                                                "label_indexer_model_file_path"
                                                                                ])
 
-PartialModelTrainerMetricArtifact = namedtuple("PartialModelTrainerMetricArtifact", [
-    "f1_score", "precision_score", "recall_score"
-])
+PartialModelTrainerMetricArtifact = namedtuple("PartialModelTrainerMetricArtifact", ["areaUnderROC","areaUnderPR"])
 
 
 class ModelTrainerArtifact:

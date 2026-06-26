@@ -111,6 +111,7 @@ class ModelEvaluation:
 
             logger.info(f"Model evaluation artifact: {model_evaluation_artifact}")
             self.model_eval_artifact_data.save_eval_artifact(model_eval_artifact=model_evaluation_artifact)
+            logger.info("Model evaluation artifact saved to mongo database")
             return model_evaluation_artifact
         except Exception as e:
             raise FinanceException(e, sys)

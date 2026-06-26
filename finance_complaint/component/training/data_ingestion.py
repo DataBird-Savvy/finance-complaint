@@ -46,9 +46,9 @@ class DataIngestion:
         end_date = datetime.strptime(self.data_ingestion_config.to_date, "%Y-%m-%d")
         n_diff_days = (end_date - start_date).days
         freq = None
-        if n_diff_days > 180:
-            freq = "6M"
-        elif n_diff_days > 30:
+        # if n_diff_days > 180:
+        #     freq = "6M"
+        if n_diff_days > 30:
             freq = "M"
         elif n_diff_days > 7:
             freq = "W"

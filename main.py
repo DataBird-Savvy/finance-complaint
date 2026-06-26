@@ -18,7 +18,7 @@ def start_training(start=False):
         raise FinanceException(e, sys)
 
 
-def start_prediction(start=False):
+def start_prediction(start=False): 
     try:
         if not start:
             return None

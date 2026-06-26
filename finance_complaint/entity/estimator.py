@@ -1,4 +1,5 @@
 import sys
+from finance_complaint.logger import logger
 
 from finance_complaint.exception import FinanceException
 from pyspark.ml.pipeline import PipelineModel
@@ -12,12 +13,14 @@ from typing import List, Optional
 import re
 from abc import abstractmethod, ABC
 from finance_complaint.config.aws_connection_config import AWSConnectionConfig
+from finance_complaint.constant.environment.variable_key import ENABLE_S3
 
 class CloudEstimator(ABC):
     key = "model-registry"
     model_dir = "saved_models"
     compression_format = "zip"
     model_file_name = "model.zip"
+    
 
     @abstractmethod
     def get_all_model_path(self, key) -> List[str]:
@@ -125,7 +128,7 @@ class CloudEstimator(ABC):
 
 class S3Estimator(CloudEstimator):
 
-    def __init__(self, bucket_name, region_name="ap-south-1", **kwargs):
+    def __init__(self, bucket_name=None, region_name="ap-south-1",enable_s3=None, **kwargs):
         """
 
         Args:
@@ -133,8 +136,27 @@ class S3Estimator(CloudEstimator):
             region_name: s3 bucket region
             **kwargs: other keyword argument
         """
+        if enable_s3 is None:
+            enable_s3 = os.getenv("ENABLE_S3", "false").lower() == "true"
+        self.enable_s3 = enable_s3
+        self.__model_dir = self.model_dir
+        self.__timestamp = str(time.time())[:10]
+        self.__model_file_name = self.model_file_name
+        self.__compression_format = self.compression_format
+
+        
+        if not self.enable_s3:
+            
+            logger.info("S3 disabled → local mode")
+            self.s3_client = None
+            self.resource = None
+            self.bucket = None
+            self.bucket_name = None
+            return
+        
         if len(kwargs) > 0:
-            super().__init__(kwargs)
+            super().__init__(**kwargs)
+
 
         aws_connect_config = AWSConnectionConfig(region_name=region_name)
         self.s3_client = aws_connect_config.s3_client
@@ -147,15 +169,14 @@ class S3Estimator(CloudEstimator):
         if bucket_name not in available_buckets:
             location = {'LocationConstraint': region_name}
             self.s3_client.create_bucket(Bucket=bucket_name,
-                                         CreateBucketConfiguration=location)
+                                        CreateBucketConfiguration=location)
         self.bucket = self.resource.Bucket(bucket_name)
         self.bucket_name = bucket_name
 
-        self.__model_dir = self.model_dir
-        self.__timestamp = str(time.time())[:10]
-        self.__model_file_name = self.model_file_name
-        self.__compression_format = self.compression_format
-
+     
+    def __safe_s3(self):
+        return self.enable_s3 and self.s3_client is not None
+    
     def __get_save_model_path(self, key: str = None) -> str:
         """
         This function prepare new cloud storage key to save the zipped mode
@@ -178,6 +199,8 @@ class S3Estimator(CloudEstimator):
         Returns: return List of all model cloud storage key path
 
         """
+        if not self.__safe_s3():
+            return []
         if key is None:
             key = self.key
         if not key.endswith("/"):
@@ -199,6 +222,8 @@ class S3Estimator(CloudEstimator):
         Returns: Return None if no model available else return the latest model key
 
         """
+        if not self.__safe_s3():
+            return None
         if key is None:
             key = self.key
         if not key.endswith("/"):
@@ -341,7 +366,7 @@ class FinanceComplaintEstimator:
     def get_latest_model_path(self, ):
         try:
             dir_list = os.listdir(self.model_dir)
-            latest_model_folder = dir_list[-1]
+            latest_model_folder = sorted(dir_list)[-1]
             tmp_dir = os.path.join(self.model_dir, latest_model_folder)
             model_path = os.path.join(self.model_dir, latest_model_folder, os.listdir(tmp_dir)[-1])
             return model_path

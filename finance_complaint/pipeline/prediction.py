@@ -1,5 +1,6 @@
 from finance_complaint.constant.model import S3_MODEL_BUCKET_NAME, S3_MODEL_DIR_KEY
 from finance_complaint.constant.prediction_pipeline_config.file_config import S3_DATA_BUCKET_NAME, PYSPARK_S3_ROOT
+from finance_complaint.constant.environment.variable_key import ENABLE_S3
 from finance_complaint.entity.config_entity import PredictionPipelineConfig
 from finance_complaint.entity.schema import FinanceDataSchema
 from pyspark.sql import DataFrame
@@ -15,16 +16,22 @@ from finance_complaint.entity.estimator import S3FinanceEstimator
 class PredictionPipeline:
 
     def __init__(self, pipeline_config=PredictionPipelineConfig()) -> None:
-        self.__pyspark_s3_root = PYSPARK_S3_ROOT
         self.pipeline_config: PredictionPipelineConfig = pipeline_config
-        self.s3_storage: SimpleStorageService = SimpleStorageService(s3_bucket_name=S3_DATA_BUCKET_NAME,
-                                                                     region_name=pipeline_config.region_name)
+        if ENABLE_S3:
+            logger.info("S3 is enabled for prediction pipeline.")
+            self.__pyspark_s3_root = PYSPARK_S3_ROOT
+            
+            self.s3_storage: SimpleStorageService = SimpleStorageService(s3_bucket_name=S3_DATA_BUCKET_NAME,
+                                                                        region_name=pipeline_config.region_name)
         self.schema: FinanceDataSchema = FinanceDataSchema()
 
     def read_file(self, file_path: str) -> DataFrame:
         try:
-            file_path = self.get_pyspark_s3_file_path(dir_path=file_path)
-            df =  spark_session.read.parquet(file_path)
+            if ENABLE_S3:
+                file_path = self.get_pyspark_s3_file_path(dir_path=file_path)
+            else:
+                file_path = os.path.join(self.pipeline_config.input_dir, file_path)
+            df = spark_session.read.parquet(file_path)
             return df.limit(100)
         except Exception as e:
             raise FinanceException(e, sys)
@@ -35,7 +42,8 @@ class PredictionPipeline:
             if file_path.endswith("csv"):
                 file_path = os.path.dirname(file_path)
 
-            file_path = self.get_pyspark_s3_file_path(dir_path=file_path)
+            if ENABLE_S3:
+                file_path = self.get_pyspark_s3_file_path(dir_path=file_path)
             print(file_path)
             logger.info(f"writing parquet file at : {file_path}")
             dataframe.write.parquet(file_path,mode="overwrite")

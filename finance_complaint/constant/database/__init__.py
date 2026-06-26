@@ -1,1 +1,1 @@
-DATABASE_NAME = "finance-complaint-db"
+DATABASE_NAME = "finance-complaint"

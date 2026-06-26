@@ -98,6 +98,8 @@ AIRFLOW SETUP
 
 ## How to setup airflow
 
+![alt text](image.png)
+
 Set airflow directory
 ```
 export AIRFLOW_HOME="/home/avnish/census_consumer_project/census_consumer_complaint/airflow"
@@ -115,7 +117,7 @@ airflow db init
 
 To create login user for airflow
 ```
-airflow users create  -e avnish@ineuron.ai -f Avnish -l Yadav -p admin -r Admin  -u admin
+airflow users create  -e jiya@bmh@gmail.com -f jiya -l joseph -p password -r Admin  -u admin
 ```
 To start scheduler
 ```

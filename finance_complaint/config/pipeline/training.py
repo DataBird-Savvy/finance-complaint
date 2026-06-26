@@ -59,6 +59,7 @@ class FinanceConfig:
         if from_date_obj < min_start_date:
             from_date = DATA_INGESTION_MIN_START_DATE
         if to_date is None:
+            
             to_date = datetime.now().strftime("%Y-%m-%d")
 
         """

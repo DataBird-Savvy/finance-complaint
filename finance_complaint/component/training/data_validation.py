@@ -42,7 +42,7 @@ class DataValidation(FinanceDataSchema):
         try:
             dataframe: DataFrame = spark_session.read.parquet(
                 self.data_ingestion_artifact.feature_store_file_path
-            ).limit(10000)
+            )
             logger.info(f"Data frame is created using file: {self.data_ingestion_artifact.feature_store_file_path}")
             logger.info(f"Number of row: {dataframe.count()} and column: {len(dataframe.columns)}")
             #dataframe, _ = dataframe.randomSplit([0.001, 0.999])
@@ -69,7 +69,38 @@ class DataValidation(FinanceDataSchema):
 
         except Exception as e:
             raise FinanceException(e, sys)
+    def check_imbalance(self, dataframe: DataFrame) -> None:
+        try:
+            logger.info("Checking target class imbalance...")
 
+            # Count per class
+            distribution_df = dataframe.groupBy(
+                self.target_column
+            ).count()
+
+            total_count = dataframe.count()
+
+            # Collect results
+            distribution = distribution_df.collect()
+
+            logger.info(f"Total rows: {total_count}")
+
+            for row in distribution:
+                label = row[self.target_column]
+                count = row["count"]
+                percentage = (count / total_count) * 100
+
+                logger.info(
+                    f"Class: {label} | Count: {count} | "
+                    f"Percentage: {percentage:.2f}%"
+                )
+
+            # Optional warning
+            if any((row["count"] / total_count) < 0.1 for row in distribution):
+                logger.warning("Severe class imbalance detected!")
+
+        except Exception as e:
+            raise FinanceException(e, sys)
     def get_unwanted_and_high_missing_value_columns(self, dataframe: DataFrame, threshold: float = 0.2) -> List[str]:
         try:
             missing_report: Dict[str, MissingReport] = self.get_missing_report(dataframe=dataframe)
@@ -131,42 +162,52 @@ class DataValidation(FinanceDataSchema):
         except Exception as e:
             raise FinanceException(e, sys)
 
-    # def drop_row_without_target_label(self, dataframe: DataFrame) -> DataFrame:
-    #     try:
-    #         dropped_rows = "dropped_row"
-    #         total_rows: int = dataframe.count()
-    #         logger.info(f"Number of row: {total_rows} ")
-    #
-    #         # Drop row if target value is unknown
-    #         logger.info(f"Dropping rows without target value.")
-    #         unlabelled_dataframe: DataFrame = dataframe.filter(f"{self.target_column}== 'N/A'")
-    #
-    #         rejected_dir = os.path.join(self.data_validation_config.rejected_data_dir, dropped_rows)
-    #         os.makedirs(rejected_dir, exist_ok=True)
-    #         file_path = os.path.join(rejected_dir, self.data_validation_config.file_name)
-    #
-    #         unlabelled_dataframe = unlabelled_dataframe.withColumn(ERROR_MESSAGE, lit("Dropped row as target label is "
-    #                                                                                   "unknown"))
-    #
-    #         logger.info(f"Unlabelled data has row: [{unlabelled_dataframe.count()}] and columns:"
-    #                     f" [{len(unlabelled_dataframe.columns)}]")
-    #
-    #         logger.info(f"Write unlabelled data into rejected file path: [{file_path}]")
-    #         unlabelled_dataframe.write.mode("append").parquet(file_path)
-    #
-    #         dataframe: DataFrame = dataframe.filter(f"{self.target_column}!= 'N/A'")
-    #
-    #         logger.info(f"Remaining data has rows: [{dataframe.count()}] and columns: [{len(dataframe.columns)}]")
-    #         return dataframe
-    #     except Exception as e:
-    #         raise FinanceException(e, sys)
+    def drop_row_without_target_label_and_duplicates(self, dataframe: DataFrame) -> DataFrame:
+        try:
+            dropped_rows = "dropped_row"
+            total_rows: int = dataframe.count()
+            logger.info(f"Number of row: {total_rows} ")
+    
+            # Drop row if target value is unknown
+            logger.info(f"Dropping rows without target value.")
+
+            unlabelled_dataframe = dataframe.filter(col(self.target_column) == "N/A")
+            logger.info(f"Number of unlabelled row: {unlabelled_dataframe.count()} and columns: [{len(unlabelled_dataframe.columns)}]")
+            
+    
+            rejected_dir = os.path.join(self.data_validation_config.rejected_data_dir, dropped_rows)
+            os.makedirs(rejected_dir, exist_ok=True)
+            file_path = os.path.join(rejected_dir, self.data_validation_config.file_name)
+    
+            unlabelled_dataframe = unlabelled_dataframe.withColumn(ERROR_MESSAGE, lit("Dropped row as target label is "
+                                                                                      "unknown"))
+    
+            logger.info(f"Unlabelled data has row: [{unlabelled_dataframe.count()}] and columns:"
+                        f" [{len(unlabelled_dataframe.columns)}]")
+    
+            logger.info(f"Write unlabelled data into rejected file path: [{file_path}]")
+            unlabelled_dataframe.write.mode("append").parquet(file_path)
+    
+            dataframe: DataFrame = dataframe.filter(f"{self.target_column}!= 'N/A'")
+    
+            logger.info(f"Remaining data has rows: [{dataframe.count()}] and columns: [{len(dataframe.columns)}]")
+            dataframe = dataframe.dropDuplicates()
+            logger.info(f"After dropping duplicates data has rows: [{dataframe.count()}] and columns: [{len(dataframe.columns)}]")
+
+            return dataframe
+        except Exception as e:
+            raise FinanceException(e, sys)
 
     def initiate_data_validation(self) -> DataValidationArtifact:
         try:
             logger.info(f"Initiating data preprocessing.")
             dataframe: DataFrame = self.read_data()
-            # dataframe = self.drop_row_without_target_label(dataframe=dataframe)
-
+            
+            dataframe = self.drop_row_without_target_label_and_duplicates(dataframe=dataframe)
+            logger.info(f"Checking class imbalance")
+            
+            self.check_imbalance(dataframe)
+            
             logger.info(f"Dropping unwanted columns")
             dataframe: DataFrame = self.drop_unwanted_columns(dataframe=dataframe)
 

@@ -1,5 +1,7 @@
 import os
 
+import pyspark
+
 from finance_complaint.entity.schema import FinanceDataSchema
 import sys
 from pyspark.ml.feature import StringIndexer, StringIndexerModel
@@ -12,6 +14,7 @@ from finance_complaint.entity.artifact_entity import DataTransformationArtifact,
     PartialModelTrainerMetricArtifact, PartialModelTrainerRefArtifact, ModelTrainerArtifact
 from finance_complaint.entity.config_entity import ModelTrainerConfig
 from pyspark.sql import DataFrame
+from pyspark.sql.functions import when, col
 from pyspark.ml.feature import IndexToString
 from pyspark.ml.classification import RandomForestClassifier
 from finance_complaint.utils import get_score
@@ -44,6 +47,31 @@ class ModelTrainer:
             return scores
         except Exception as e:
             raise FinanceException(e, sys)
+        
+    from pyspark.sql.functions import when, col
+
+    def handle_imbalance(self, train_dataframe: DataFrame) -> DataFrame:
+        try:
+            label_col = self.schema.target_indexed_label
+
+            distribution = (train_dataframe.groupBy(label_col).count().collect())
+
+            count_dict = {row[label_col]: row["count"] for row in distribution}
+
+            major_class = max(count_dict,key=count_dict.get)
+
+            minor_class = min(count_dict,key=count_dict.get)
+
+            ratio = ( count_dict[major_class] /count_dict[minor_class] )
+
+            logger.info(f"Major class: {major_class}, " f"Minor class: {minor_class}, " f"Ratio: {ratio}" )
+
+            train_dataframe = train_dataframe.withColumn("classWeight",when( col(label_col) == minor_class, ratio).otherwise(1.0) )
+
+            return train_dataframe
+
+        except Exception as e:
+            raise FinanceException(e, sys)
 
     def get_train_test_dataframe(self) -> List[DataFrame]:
         try:
@@ -51,7 +79,10 @@ class ModelTrainer:
             test_file_path = self.data_transformation_artifact.transformed_test_file_path
             train_dataframe: DataFrame = spark_session.read.parquet(train_file_path)
             test_dataframe: DataFrame = spark_session.read.parquet(test_file_path)
+            logger.info(f"Number of row in training dataframe: {train_dataframe.count()}")
+            logger.info(f"Number of row in test dataframe: {test_dataframe.count()}")   
             print(f"Train row: {train_dataframe.count()} Test row: {test_dataframe.count()}")
+
             dataframes: List[DataFrame] = [train_dataframe, test_dataframe]
             return dataframes
         except Exception as e:
@@ -62,7 +93,7 @@ class ModelTrainer:
             stages = []
             logger.info("Creating Random Forest Classifier class.")
             random_forest_clf = RandomForestClassifier(labelCol=self.schema.target_indexed_label,
-                                                       featuresCol=self.schema.scaled_vector_input_features)
+                                                       featuresCol=self.schema.scaled_vector_input_features,weightCol="classWeight")
 
             logger.info("Creating Label generator")
             label_generator = IndexToString(inputCol=self.schema.prediction_column_name,
@@ -106,6 +137,7 @@ class ModelTrainer:
             dataframes = self.get_train_test_dataframe()
             train_dataframe, test_dataframe = dataframes[0], dataframes[1]
 
+
             print(f"Train row: {train_dataframe.count()} Test row: {test_dataframe.count()}")
             label_indexer = StringIndexer(inputCol=self.schema.target_column,
                                           outputCol=self.schema.target_indexed_label)
@@ -116,7 +148,8 @@ class ModelTrainer:
 
             train_dataframe = label_indexer_model.transform(train_dataframe)
             test_dataframe = label_indexer_model.transform(test_dataframe)
-
+            train_dataframe=self.handle_imbalance(train_dataframe)
+            logger.info(f"train_dataframe after handling imbalance: {train_dataframe.count()}")
             model = self.get_model(label_indexer_model=label_indexer_model)
 
             trained_model = model.fit(train_dataframe)
@@ -125,16 +158,16 @@ class ModelTrainer:
 
             print(f"number of row in training: {train_dataframe_pred.count()}")
             scores = self.get_scores(dataframe=train_dataframe_pred,metric_names=self.model_trainer_config.metric_list)
-            train_metric_artifact = PartialModelTrainerMetricArtifact(f1_score=scores[0][1],
-                                                                      precision_score=scores[1][1],
-                                                                      recall_score=scores[2][1])
+            logger.info(f"Model trainer train metric: {scores}")
+            train_metric_artifact = PartialModelTrainerMetricArtifact(areaUnderROC=scores[0][1],
+                                                                      areaUnderPR=scores[1][1])
             logger.info(f"Model trainer train metric: {train_metric_artifact}")
 
             print(f"number of row in training: {test_dataframe_pred.count()}")
             scores = self.get_scores(dataframe=test_dataframe_pred,metric_names=self.model_trainer_config.metric_list)
-            test_metric_artifact = PartialModelTrainerMetricArtifact(f1_score=scores[0][1],
-                                                                     precision_score=scores[1][1],
-                                                                     recall_score=scores[2][1])
+            logger.info(f"Model trainer test metric: {scores}")
+            test_metric_artifact = PartialModelTrainerMetricArtifact(areaUnderROC=scores[0][1],
+                                                                     areaUnderPR=scores[1][1])
 
             logger.info(f"Model trainer test metric: {test_metric_artifact}")
             ref_artifact = self.export_trained_model(model=trained_model)
